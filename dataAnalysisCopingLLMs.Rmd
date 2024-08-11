@@ -272,22 +272,22 @@ ggplot(ex1_p, aes(x = model, y=gap, fill = condition)) + geom_boxplot() + facet_
 gap_y <- "Diff between second and first gap"
 ## Self x with
 gap_self_with <- brm(gap ~ model*condition, data = subset(ex1_p,perspective == 'self' & prior =='with'), 
-                     family = gaussian(), file='model/new_selfwith')
+                     family = gaussian(), file='model/fixed_selfwith')
 ## Roleplay x with
 gap_roleplay_with <- brm(gap ~ model*condition, data = subset(ex1_p,perspective == 'roleplay' & prior =='with'), 
-                         family = gaussian(), file = 'model/new_roleplaywith')
+                         family = gaussian(), file = 'model/fixed_roleplaywith')
 ## Prediction x With
 gap_predict_with <- brm(gap ~ model*condition, data = subset(ex1_p,perspective == 'predict' & prior =='with'), 
-                        family = gaussian(), file = 'model/new_predictwith')
+                        family = gaussian(), file = 'model/fixed_predictwith')
 ## Self x wout
 gap_self_wout <- brm(gap ~ model*condition, data = subset(ex1_p,perspective == 'self' & prior =='without'), 
-                     family = gaussian(), file = 'model/new_selfwithout')
+                     family = gaussian(), file = 'model/fixed_selfwithout')
 ## Roleplay x without
 gap_roleplay_wout <- brm(gap ~ model*condition, data = subset(ex1_p,perspective == 'roleplay' & prior =='without'), 
-                         family = gaussian(), file = 'model/new_roleplaywithout')
+                         family = gaussian(), file = 'model/fixed_roleplaywithout')
 ## Prediction x Without
 gap_predict_wout <- brm(gap ~ model*condition, data = subset(ex1_p,perspective == 'predict' & prior =='without'), 
-                        family = gaussian(), file = 'model/new_predictwithout')
+                        family = gaussian(), file = 'model/fixed_predictwithout')
 
 ## Plotting
 g_gap_self_with <- plot(conditional_effects(gap_self_with), plot = FALSE)$`model:condition` + ylim(-4, 1.5)  +
@@ -349,6 +349,41 @@ write.csv(results, file='ex1_main_hypo.csv')
 
 
 ```
+
+```{r echo = FALSE}
+## Test Normally distributed assumption
+
+
+
+## Test Homogeneity in variances
+### Mainly mixtral and cHATGPT that violate sometimes.
+count <- 0
+perspectives <- c("self","roleplay","predict")
+priors       <- c('with','without')
+models <- c(CHATGPT, FURBO, SONNET, OPUS, MIXTRAL)
+items <- c("object","fruit","food")
+for(p in perspectives){
+  for(pri in priors){
+    for(m in models){
+        print(c(p, pri, m))
+        temp_dat = subset(ex1_p, model == m & perspective == p & prior == pri)
+        print(shapiro.test(temp_dat$gap))
+        print(bartlett.test(gap ~ condition, data=temp_dat))
+        ## 
+        if(sum(temp_dat$condition=='Easy') != sum(temp_dat$condition=='Hard')) { 
+          count <- count + 1
+          next
+        }
+        print(t.test(gap ~ condition, data = temp_dat, paired = TRUE)$p.value)
+        print(wilcox.test(gap ~ condition, data= temp_dat, paired = TRUE)$p.value)
+    }
+  }
+}
+print(count)
+
+
+```
+
 
 ```{r echo=FALSE}
 
@@ -413,6 +448,7 @@ print(xtable(new_ex1_high_hypo, type = "latex"), file = "new_ex1_high_hypo.tex")
 
 
 ```
+
 
 
 
@@ -609,11 +645,16 @@ genEx2MainPlots <- function(dat, bel, pr){
       if(bel == 'wind'){
         temp_m <- brm(wind_2 ~ model*forced_decision, subset(dat, condition == c & perspective == p), file = paste0('model/',bel,pr,c,p))
       }
+      title_text <- paste0(str_to_title(c),'-',str_to_title(p))
+      if(c == 'better'){
+        title_text <- paste0("Weaker",'-',str_to_title(p))
+      }  
       
       temp_g <- plot(conditional_effects(temp_m), plot=FALSE)$`model:forced_decision` + 
-        ggtitle(paste0(str_to_title(c),'-',str_to_title(p))) + ylim(ylabs[paste0(bel,'.',c,'1')], ylabs[paste0(bel,'.',c,'2')])
+        ggtitle(title_text) + ylim(ylabs[paste0(bel,'.',c,'1')], ylabs[paste0(bel,'.',c,'2')])
+      
       temp_dat <- subset(dat, condition==c & perspective == p)
-      temp_g <- temp_g + geom_point(data=temp_dat, aes_string(x='model', y=paste0(bel,'_2'), color='forced_decision'), shape = 13, size = 2, inherit.aes = FALSE, position = position_jitter(h=0.2,w=0.2))
+      temp_g <- temp_g + geom_point(data=temp_dat, aes_string(x='model', y=paste0(bel,'_2'), color='forced_decision'), shape = 13, size = 2, inherit.aes = FALSE, position = position_jitter(h=0.0, w=0.2))
       
       #grab the y and the legend 
       legend <- get_legend(
@@ -721,6 +762,53 @@ print(xtable(subset(out, out$prior =='with' & out$belief =='Wind Speed'), type =
 
 print(xtable(subset(out, out$prior =='without' & out$belief =='Flood Depth'), type = "latex"), file = "ex2_hypo1_without_flood.tex")
 print(xtable(subset(out, out$prior =='without' & out$belief =='Wind Speed'), type = "latex"), file = "ex2_hypo1_without_wind.tex")
+
+```
+
+```{r echo = FALSE}
+## Standard t-test
+count <- 0
+perspectives <- c("self","roleplay","predict")
+priors       <- c('with','without')
+models <- c(CHATGPT, FURBO, SONNET, OPUS, MIXTRAL)
+condition <- unique(ex2_b1$condition)
+for(p in perspectives){
+  for(pri in priors){
+    for(m in models){
+      for(c1 in condition){
+        for(c2 in condition){
+          if(c1 == c2) next
+          
+          print(c(p, pri, m, c1, c2))
+          temp_dat = subset(ex2_b1, model == m & perspective == p & prior == pri & (condition == c1 | condition == c2))
+          ## should not happen here 
+          if(sum(temp_dat$condition=='Easy') != sum(temp_dat$condition=='Hard')) { 
+            count <- count + 1
+            next
+          }
+        
+          print("---Flood---")
+          if(length(unique(subset(temp_dat, condition==c1)$flood_2))==1 | length(unique(subset(temp_dat, condition==c2)$flood_2))==1) next
+          
+          print(shapiro.test(temp_dat$flood_2))
+          print(bartlett.test(flood_2 ~ condition, data=temp_dat))
+         
+          print(t.test(flood_2 ~ condition, data = temp_dat, paired = TRUE)$p.value)
+          print(wilcox.test(flood_2 ~ condition, data= temp_dat, paired = TRUE)$p.value)
+          print("---Wind---")
+          if(length(unique(subset(temp_dat, condition==c1)$wind_2))==1 | length(unique(subset(temp_dat, condition==c2)$wind_2))==1) next
+          
+          print(shapiro.test(temp_dat$wind_2))
+          print(bartlett.test(wind_2 ~ condition, data=temp_dat))
+          
+          print(t.test(wind_2 ~ condition, data = temp_dat, paired = TRUE)$p.value)
+          print(wilcox.test(wind_2 ~ condition, data= temp_dat, paired = TRUE)$p.value)
+        }
+      }
+    }
+  }
+}
+print(count)
 
 ```
 
